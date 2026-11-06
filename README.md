@@ -35,6 +35,11 @@ Bu jarayon bot polling va Flask serverini birga ishga tushiradi. `bot.py` yoki `
 - URL: `MINI_APP_URL` qiymatiga teng, HTTPS manzil
 - Panelni Telegram ilovasi ichidan oching. Backend Telegram `initData` imzosini tekshiradi va faqat `TEACHER_ID` egasiga ruxsat beradi.
 
+## O'qituvchi o'quvchiga yozishi
+- Bot chatida `/start` yuboring va **O'quvchiga yozish** tugmasini bosing.
+- Ro'yxatdan o'quvchini tanlang, keyingi xabar yoki mediani yuboring. Reply qilish ham, Mini App ochish ham shart emas.
+- Yozishni to'xtatish uchun `/cancel` yuboring.
+
 ## Nginx bilan (tavsiya)
 ```nginx
 server {

@@ -11,7 +11,7 @@ from urllib.parse import parse_qsl
 import requests
 from flask import Flask, jsonify, request, send_from_directory
 
-from config import BOT_TOKEN, TEACHER_ID, MINI_APP_URL
+from config import BOT_TOKEN, TEACHER_ID
 from db import get_conn, init_db
 
 # ── LOGGING ──
@@ -21,6 +21,8 @@ log = logging.getLogger(__name__)
 # ── TELEGRAM API ──
 TG_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 APP_DIR = Path(__file__).resolve().parent
+PENDING_TEACHER_MESSAGE = {}
+STUDENT_PAGE_SIZE = 10
 
 
 def tg(method, *, request_timeout=10, **data):
@@ -100,6 +102,130 @@ def message_metadata(message):
     return "unknown", message.get("caption") or "", None
 
 
+def show_teacher_menu(chat_id):
+    send(
+        chat_id,
+        "O'quvchi bilan yozishish uchun tugmani bosing.\n"
+        "Kelgan xabarga Reply qilib javob berish ham mumkin.",
+        reply_markup={
+            "inline_keyboard": [[{
+                "text": "✉️ O'quvchiga yozish",
+                "callback_data": "students:0",
+            }]]
+        },
+    )
+
+
+def show_student_picker(chat_id, page=0, message_id=None):
+    page = max(0, page)
+    conn = get_conn()
+    try:
+        total = conn.execute("SELECT COUNT(*) FROM students").fetchone()[0]
+        rows = conn.execute(
+            """SELECT user_id, full_name, group_name FROM students
+               ORDER BY full_name COLLATE NOCASE, user_id LIMIT ? OFFSET ?""",
+            (STUDENT_PAGE_SIZE, page * STUDENT_PAGE_SIZE),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    if not total:
+        text = "Hozircha o'quvchilar ro'yxati bo'sh."
+        markup = {"inline_keyboard": [[{
+            "text": "⬅️ Menyu",
+            "callback_data": "teacher:menu",
+        }]]}
+    else:
+        start = page * STUDENT_PAGE_SIZE + 1
+        end = start + len(rows) - 1
+        text = f"Yozmoqchi bo'lgan o'quvchini tanlang ({start}–{end} / {total}):"
+        keyboard = []
+        for row in rows:
+            label = row["full_name"] or str(row["user_id"])
+            if row["group_name"]:
+                label += f" · {row['group_name']}"
+            keyboard.append([{
+                "text": label[:60],
+                "callback_data": f"student:{row['user_id']}",
+            }])
+        navigation = []
+        if page > 0:
+            navigation.append({"text": "⬅️ Oldingi", "callback_data": f"students:{page - 1}"})
+        if (page + 1) * STUDENT_PAGE_SIZE < total:
+            navigation.append({"text": "Keyingi ➡️", "callback_data": f"students:{page + 1}"})
+        if navigation:
+            keyboard.append(navigation)
+        keyboard.append([{"text": "✖️ Bekor qilish", "callback_data": "teacher:menu"}])
+        markup = {"inline_keyboard": keyboard}
+
+    if message_id:
+        return tg(
+            "editMessageText", chat_id=chat_id, message_id=message_id,
+            text=text, reply_markup=markup,
+        )
+    return send(chat_id, text, reply_markup=markup)
+
+
+def handle_callback_query(callback):
+    callback_id = callback.get("id")
+    sender = callback.get("from", {})
+    message = callback.get("message") or {}
+    chat = message.get("chat") or {}
+    if (
+        sender.get("id") != TEACHER_ID
+        or chat.get("type") != "private"
+        or chat.get("id") != TEACHER_ID
+    ):
+        tg("answerCallbackQuery", callback_query_id=callback_id, text="Ruxsat yo'q.", show_alert=True)
+        return
+
+    data = callback.get("data", "")
+    chat_id = chat["id"]
+    message_id = message.get("message_id")
+
+    if data.startswith("students:"):
+        try:
+            page = int(data.partition(":")[2])
+        except ValueError:
+            tg("answerCallbackQuery", callback_query_id=callback_id, text="Noto'g'ri sahifa.")
+            return
+        tg("answerCallbackQuery", callback_query_id=callback_id)
+        show_student_picker(chat_id, page, message_id)
+        return
+
+    if data.startswith("student:"):
+        try:
+            student_id = int(data.partition(":")[2])
+        except ValueError:
+            student_id = 0
+        conn = get_conn()
+        try:
+            student = conn.execute(
+                "SELECT full_name FROM students WHERE user_id = ?", (student_id,)
+            ).fetchone()
+        finally:
+            conn.close()
+        if not student:
+            tg("answerCallbackQuery", callback_query_id=callback_id, text="O'quvchi topilmadi.", show_alert=True)
+            return
+        PENDING_TEACHER_MESSAGE[TEACHER_ID] = student_id
+        tg("answerCallbackQuery", callback_query_id=callback_id, text="O'quvchi tanlandi.")
+        send(
+            chat_id,
+            f"{student['full_name']} ga yuboriladigan xabarni yozing yoki media yuboring.\n"
+            "Bekor qilish uchun /cancel yuboring.",
+        )
+        return
+
+    if data == "teacher:menu":
+        tg("answerCallbackQuery", callback_query_id=callback_id)
+        PENDING_TEACHER_MESSAGE.pop(TEACHER_ID, None)
+        show_teacher_menu(chat_id)
+        return
+
+    tg("answerCallbackQuery", callback_query_id=callback_id, text="Tugma eskirgan.")
+
+
 # ══════════════════════════════════════════
 #  BOT LOGIC
 # ══════════════════════════════════════════
@@ -121,6 +247,16 @@ def forward_to_teacher(conn, student_id, message_id, content_type, text, file_id
 
 
 def handle_update(update):
+    callback = update.get("callback_query")
+    if callback:
+        try:
+            handle_callback_query(callback)
+        except Exception as e:
+            log.error("Tugma so'rovida xato: %s", e)
+            if callback.get("id"):
+                tg("answerCallbackQuery", callback_query_id=callback["id"], text="Xatolik yuz berdi.")
+        return
+
     msg = update.get("message")
     if not msg:
         return
@@ -137,18 +273,48 @@ def handle_update(update):
 
         # ── O'QITUVCHI ──
         if from_id == TEACHER_ID:
+            command = text.split(maxsplit=1)[0].split("@", 1)[0] if text else ""
+            if command == "/start":
+                PENDING_TEACHER_MESSAGE.pop(TEACHER_ID, None)
+                show_teacher_menu(TEACHER_ID)
+                return
+
+            if command == "/cancel":
+                PENDING_TEACHER_MESSAGE.pop(TEACHER_ID, None)
+                send(TEACHER_ID, "Yozish bekor qilindi.")
+                return
+
+            target_student_id = PENDING_TEACHER_MESSAGE.get(TEACHER_ID)
+            if target_student_id:
+                result = tg(
+                    "copyMessage", chat_id=target_student_id,
+                    from_chat_id=TEACHER_ID, message_id=msg_id,
+                )
+                if result.get("message_id"):
+                    conn.execute("""
+                        INSERT INTO messages
+                            (student_id, teacher_message_id, direction, content_type, text, file_id)
+                        VALUES (?, ?, 'out', ?, ?, ?)
+                    """, (target_student_id, msg_id, content_type, text, file_id))
+                    conn.commit()
+                    PENDING_TEACHER_MESSAGE.pop(TEACHER_ID, None)
+                    student = conn.execute(
+                        "SELECT full_name FROM students WHERE user_id = ?",
+                        (target_student_id,),
+                    ).fetchone()
+                    name = student["full_name"] if student else str(target_student_id)
+                    send(TEACHER_ID, f"✅ {name} ga xabar yuborildi.")
+                else:
+                    send(
+                        TEACHER_ID,
+                        "❌ Xabar yuborilmadi. Qayta urinib ko'ring yoki /cancel yuboring.",
+                    )
+                return
+
             reply = msg.get("reply_to_message")
 
             if not reply:
-                send(TEACHER_ID,
-                     "⚠️ Javob berish uchun o'quvchi xabariga Reply qiling.\n"
-                     "Yoki Mini App orqali yozing 👇",
-                     reply_markup={
-                         "inline_keyboard": [[{
-                             "text": "📱 Mini App ochish",
-                             "web_app": {"url": MINI_APP_URL}
-                         }]]
-                     })
+                show_teacher_menu(TEACHER_ID)
                 return
 
             row = conn.execute("""
@@ -228,7 +394,7 @@ def run_polling():
         try:
             updates = tg("getUpdates", offset=offset, timeout=30,
                          request_timeout=35,
-                         allowed_updates=["message"])
+                         allowed_updates=["message", "callback_query"])
             if isinstance(updates, list):
                 for upd in updates:
                     offset = upd["update_id"] + 1
