@@ -285,7 +285,9 @@ def handle_update(update):
                 return
 
             target_student_id = PENDING_TEACHER_MESSAGE.get(TEACHER_ID)
-            if target_student_id:
+            # A Reply always targets the student attached to the replied-to message.
+            # Use the selected student only when the teacher's message has no Reply.
+            if target_student_id and not msg.get("reply_to_message"):
                 result = tg(
                     "copyMessage", chat_id=target_student_id,
                     from_chat_id=TEACHER_ID, message_id=msg_id,
