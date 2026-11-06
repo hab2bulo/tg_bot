@@ -1,0 +1,590 @@
+﻿<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>O'qituvchi paneli</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #22263a;
+    --border: #2e3350;
+    --accent: #4f8ef7;
+    --accent2: #6ee7b7;
+    --text: #e8eaf0;
+    --text2: #8b90a8;
+    --danger: #f87171;
+    --in-bg: #22263a;
+    --out-bg: #1e3a5f;
+    --radius: 14px;
+    --font: 'Segoe UI', system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--text);
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* â”€â”€ HEADER â”€â”€ */
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding-top: calc(14px + env(safe-area-inset-top, 0px));
+    flex-shrink: 0;
+  }
+  .header-back {
+    background: none;
+    border: none;
+    color: var(--accent);
+    font-size: 20px;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 8px;
+    display: none;
+  }
+  .header-back.visible { display: block; }
+  .header-title {
+    font-size: 16px;
+    font-weight: 600;
+    flex: 1;
+  }
+  .header-sub {
+    font-size: 12px;
+    color: var(--text2);
+  }
+
+  /* â”€â”€ VIEWS â”€â”€ */
+  .view { flex: 1; overflow: hidden; display: none; flex-direction: column; }
+  .view.active { display: flex; }
+
+  /* â”€â”€ STUDENT LIST â”€â”€ */
+  .search-bar {
+    padding: 10px 16px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  .search-bar input {
+    width: 100%;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 8px 14px;
+    color: var(--text);
+    font-size: 14px;
+    outline: none;
+  }
+  .search-bar input::placeholder { color: var(--text2); }
+  .search-bar input:focus { border-color: var(--accent); }
+
+  .list { overflow-y: auto; flex: 1; padding: 8px 0; }
+
+  .student-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    cursor: pointer;
+    transition: background 0.15s;
+    border-bottom: 1px solid var(--border);
+  }
+  .student-item:hover { background: var(--surface); }
+  .student-item:active { background: var(--surface2); }
+
+  .avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    font-weight: 700;
+    color: #fff;
+    flex-shrink: 0;
+  }
+
+  .student-info { flex: 1; min-width: 0; }
+  .student-name {
+    font-size: 15px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .student-meta {
+    font-size: 12px;
+    color: var(--text2);
+    margin-top: 2px;
+  }
+
+  .badge {
+    background: var(--accent);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 10px;
+    min-width: 20px;
+    text-align: center;
+  }
+
+  .empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    gap: 10px;
+    color: var(--text2);
+    font-size: 15px;
+  }
+  .empty-icon { font-size: 48px; }
+
+  /* â”€â”€ CHAT VIEW â”€â”€ */
+  .chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .msg-wrap {
+    display: flex;
+    flex-direction: column;
+  }
+  .msg-wrap.out { align-items: flex-end; }
+  .msg-wrap.in { align-items: flex-start; }
+
+  .msg-bubble {
+    max-width: 80%;
+    padding: 9px 13px;
+    border-radius: 16px;
+    font-size: 14px;
+    line-height: 1.5;
+    word-break: break-word;
+  }
+  .msg-wrap.in .msg-bubble {
+    background: var(--in-bg);
+    border-bottom-left-radius: 4px;
+  }
+  .msg-wrap.out .msg-bubble {
+    background: var(--out-bg);
+    border-bottom-right-radius: 4px;
+    color: #c8deff;
+  }
+
+  .msg-time {
+    font-size: 11px;
+    color: var(--text2);
+    margin-top: 3px;
+    padding: 0 4px;
+  }
+
+  .msg-file {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+  }
+  .msg-file-icon { font-size: 22px; }
+
+  /* â”€â”€ INPUT â”€â”€ */
+  .chat-input-area {
+    display: flex;
+    gap: 8px;
+    padding: 10px 14px;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    align-items: flex-end;
+  }
+
+  .chat-input {
+    flex: 1;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 10px 16px;
+    color: var(--text);
+    font-size: 14px;
+    font-family: var(--font);
+    resize: none;
+    outline: none;
+    max-height: 120px;
+    line-height: 1.4;
+  }
+  .chat-input::placeholder { color: var(--text2); }
+  .chat-input:focus { border-color: var(--accent); }
+
+  .send-btn {
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: var(--accent);
+    border: none;
+    color: #fff;
+    font-size: 18px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: opacity 0.15s;
+  }
+  .send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .send-btn:not(:disabled):active { opacity: 0.7; }
+
+  /* â”€â”€ TOAST â”€â”€ */
+  .toast {
+    position: fixed;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 10px 20px;
+    border-radius: 20px;
+    font-size: 13px;
+    opacity: 0;
+    transition: all 0.25s;
+    pointer-events: none;
+    z-index: 100;
+    white-space: nowrap;
+  }
+  .toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* â”€â”€ GROUP EDIT â”€â”€ */
+  .group-tag {
+    display: inline-block;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-size: 11px;
+    color: var(--accent2);
+    cursor: pointer;
+  }
+
+  /* â”€â”€ LOADING â”€â”€ */
+  .loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    gap: 6px;
+    color: var(--text2);
+    font-size: 14px;
+  }
+  .dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: bounce 1s infinite;
+  }
+  .dot:nth-child(2) { animation-delay: 0.15s; }
+  .dot:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes bounce {
+    0%, 100% { transform: translateY(0); opacity: 0.4; }
+    50% { transform: translateY(-5px); opacity: 1; }
+  }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div class="header">
+  <button class="header-back" id="backBtn" onclick="showList()">â†</button>
+  <div style="flex:1">
+    <div class="header-title" id="headerTitle">ðŸ“š O'quvchilar</div>
+    <div class="header-sub" id="headerSub"></div>
+  </div>
+</div>
+
+<!-- VIEW: LIST -->
+<div class="view active" id="viewList">
+  <div class="search-bar">
+    <input type="text" id="searchInput" placeholder="ðŸ” Ism yoki guruh bo'yicha..." oninput="filterStudents()">
+  </div>
+  <div class="list" id="studentList">
+    <div class="loading"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+  </div>
+</div>
+
+<!-- VIEW: CHAT -->
+<div class="view" id="viewChat">
+  <div class="chat-messages" id="chatMessages">
+    <div class="loading"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+  </div>
+  <div class="chat-input-area">
+    <textarea class="chat-input" id="chatInput" placeholder="Xabar yozing..." rows="1"
+      oninput="autoResize(this)" onkeydown="handleKey(event)"></textarea>
+    <button class="send-btn" id="sendBtn" onclick="sendMessage()">âž¤</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const BASE = "";  // Mini App server bilan bir joyda ishlaydi
+
+let students = [];
+let currentStudent = null;
+let pollTimer = null;
+
+// â”€â”€ TELEGRAM WEB APP â”€â”€
+const tg = window.Telegram?.WebApp;
+if (tg) {
+  tg.ready();
+  tg.expand();
+}
+
+// â”€â”€ API â”€â”€
+async function apiFetch(path, options = {}) {
+  const url = `${BASE}/api/${path}`;
+  const headers = {
+    "Authorization": `tma ${tg?.initData || ""}`,
+    "Content-Type": "application/json",
+    ...(options.headers || {})
+  };
+  const r = await fetch(url, { ...options, headers });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return r.json();
+}
+
+// â”€â”€ LOAD STUDENTS â”€â”€
+async function loadStudents() {
+  try {
+    students = await apiFetch("students");
+    renderStudents(students);
+  } catch (e) {
+    document.getElementById("studentList").innerHTML =
+      `<div class="empty"><div class="empty-icon">âš ï¸</div><div>${tg?.initData ? "Ulanishda xatolik" : "Panelni Telegram ichidan oching"}</div></div>`;
+  }
+}
+
+function getInitials(name) {
+  return name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
+}
+
+function timeAgo(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr.replace(" ", "T") + "Z");
+  const diff = Date.now() - d.getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "hozirgina";
+  if (m < 60) return `${m} daq oldin`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} soat oldin`;
+  return `${Math.floor(h / 24)} kun oldin`;
+}
+
+function renderStudents(list) {
+  const el = document.getElementById("studentList");
+  if (!list.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">ðŸ‘¥</div><div>Hali o'quvchilar yo'q</div></div>`;
+    return;
+  }
+
+  el.innerHTML = list.map(s => `
+    <div class="student-item" onclick="openChat(${s.user_id})">
+      <div class="avatar">${getInitials(s.full_name)}</div>
+      <div class="student-info">
+        <div class="student-name">${esc(s.full_name)}</div>
+        <div class="student-meta">
+          ${s.group_name ? `<span class="group-tag">${esc(s.group_name)}</span> Â· ` : ""}
+          ${s.total_messages || 0} xabar Â· ${timeAgo(s.registered_at)}
+        </div>
+      </div>
+      ${s.unread > 0 ? `<div class="badge">${s.unread}</div>` : ""}
+    </div>
+  `).join("");
+}
+
+function filterStudents() {
+  const q = document.getElementById("searchInput").value.toLowerCase();
+  if (!q) { renderStudents(students); return; }
+  renderStudents(students.filter(s =>
+    s.full_name.toLowerCase().includes(q) || (s.group_name || "").toLowerCase().includes(q)
+  ));
+}
+
+// â”€â”€ OPEN CHAT â”€â”€
+async function openChat(userId) {
+  currentStudent = students.find(s => s.user_id === userId);
+  if (!currentStudent) return;
+
+  document.getElementById("viewList").classList.remove("active");
+  document.getElementById("viewChat").classList.add("active");
+  document.getElementById("backBtn").classList.add("visible");
+  document.getElementById("headerTitle").textContent = currentStudent.full_name;
+  document.getElementById("headerSub").textContent = currentStudent.group_name || "Guruh ko'rsatilmagan";
+  document.getElementById("chatInput").value = "";
+  document.getElementById("chatInput").style.height = "";
+
+  await loadMessages();
+  startPolling();
+}
+
+function showList() {
+  stopPolling();
+  currentStudent = null;
+  document.getElementById("viewChat").classList.remove("active");
+  document.getElementById("viewList").classList.add("active");
+  document.getElementById("backBtn").classList.remove("visible");
+  document.getElementById("headerTitle").textContent = "ðŸ“š O'quvchilar";
+  document.getElementById("headerSub").textContent = "";
+  loadStudents();
+}
+
+// â”€â”€ LOAD MESSAGES â”€â”€
+async function loadMessages() {
+  if (!currentStudent) return;
+  const el = document.getElementById("chatMessages");
+
+  try {
+    const msgs = await apiFetch(`messages/${currentStudent.user_id}`);
+    renderMessages(msgs);
+  } catch (e) {
+    el.innerHTML = `<div class="loading" style="color:var(--danger)">Xatolik</div>`;
+  }
+}
+
+function renderMessages(msgs) {
+  const el = document.getElementById("chatMessages");
+  const wasAtBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 60;
+
+  if (!msgs.length) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">ðŸ’¬</div><div>Hali xabar yo'q</div></div>`;
+    return;
+  }
+
+  el.innerHTML = msgs.map(m => {
+    const dir = m.direction === "out" ? "out" : "in";
+    const time = m.sent_at ? new Date(m.sent_at.replace(" ", "T") + "Z").toLocaleTimeString("uz-UZ", {hour:"2-digit",minute:"2-digit"}) : "";
+
+    const mediaLabels = {
+      photo: "Rasm", video: "Video", document: "Fayl", audio: "Audio",
+      voice: "Ovozli xabar", video_note: "Video xabar", sticker: "Stiker",
+      animation: "GIF", location: "Joylashuv", contact: "Kontakt",
+      poll: "So'rovnoma", venue: "Manzil", unknown: "Media"
+    };
+    const content = m.text
+      ? esc(m.text)
+      : `<span class="msg-file"><span class="msg-file-icon">ðŸ“Ž</span> ${esc(mediaLabels[m.content_type] || "Media")}</span>`;
+
+    const label = dir === "out" ? `<div class="msg-time" style="text-align:right">ðŸ‘©â€ðŸ« Siz Â· ${time}</div>`
+                                : `<div class="msg-time">ðŸ‘¤ O'quvchi Â· ${time}</div>`;
+
+    return `
+      <div class="msg-wrap ${dir}">
+        <div class="msg-bubble">${content}</div>
+        ${label}
+      </div>
+    `;
+  }).join("");
+
+  if (wasAtBottom || msgs.length <= 5) {
+    el.scrollTop = el.scrollHeight;
+  }
+}
+
+// â”€â”€ SEND â”€â”€
+async function sendMessage() {
+  if (!currentStudent) return;
+  const input = document.getElementById("chatInput");
+  const text = input.value.trim();
+  if (!text) return;
+
+  const btn = document.getElementById("sendBtn");
+  btn.disabled = true;
+  input.value = "";
+  input.style.height = "";
+
+  try {
+    await apiFetch("send", {
+      method: "POST",
+      body: JSON.stringify({ student_id: currentStudent.user_id, text })
+    });
+    showToast("âœ… Yuborildi");
+    await loadMessages();
+  } catch (e) {
+    showToast("âŒ Yuborishda xatolik");
+    input.value = text;
+  } finally {
+    btn.disabled = false;
+    input.focus();
+  }
+}
+
+// â”€â”€ POLLING (har 3 sek yangilanadi) â”€â”€
+function startPolling() {
+  stopPolling();
+  pollTimer = setInterval(loadMessages, 3000);
+}
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+
+// â”€â”€ HELPERS â”€â”€
+function handleKey(e) {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    sendMessage();
+  }
+}
+
+function autoResize(el) {
+  el.style.height = "auto";
+  el.style.height = Math.min(el.scrollHeight, 120) + "px";
+}
+
+function esc(str) {
+  return String(str || "")
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;")
+    .replace(/\n/g,"<br>");
+}
+
+function showToast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 2500);
+}
+
+// â”€â”€ INIT â”€â”€
+loadStudents();
+// Ro'yxatni har 10 sek yangilash
+setInterval(() => {
+  if (!currentStudent) loadStudents();
+}, 10000);
+</script>
+</body>
+</html>
