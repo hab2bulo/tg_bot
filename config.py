@@ -5,11 +5,9 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 if not BOT_TOKEN:
     raise RuntimeError("BOT_TOKEN muhit o'zgaruvchisini kiriting (BotFather tokeni)")
 
-teacher_id = os.environ.get("TEACHER_ID", "9111999720").strip()
+teacher_id = os.environ.get("TEACHER_ID", "").strip()
 if not teacher_id:
-    raise RuntimeError(
-        "TEACHER_ID muhit o'zgaruvchisini kiriting; masalan: $env:TEACHER_ID = '9111999720'"
-    )
+    raise RuntimeError("TEACHER_ID muhit o'zgaruvchisini kiriting")
 
 try:
     TEACHER_ID = int(teacher_id)
